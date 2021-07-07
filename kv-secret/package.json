@@ -28,6 +28,8 @@
     "@data-heaving/common": "^0.10.1"
   },
   "devDependencies": {
+    "@azure/keyvault-secrets": "^4.2.0",
+    "@data-heaving/common": "^0.10.1",
     "@data-heaving/common-test-support": "0.10.2",
     "@types/node": "14.14.31",
     "@typescript-eslint/eslint-plugin": "4.22.0",

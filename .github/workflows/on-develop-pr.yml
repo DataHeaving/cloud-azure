@@ -42,7 +42,6 @@ jobs:
 
           cd ${{ matrix.dir }}
           npm ci
-          ls -al node_modules
           npm run build
           npm run test
       - uses: codecov/codecov-action@v1
