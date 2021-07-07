@@ -9,7 +9,7 @@ jobs:
   publish:
     strategy:
       matrix:
-        dir: [ identity, kv-secret, storage-blob ]
+        dir: [ identity, storage-blob, kv-secret ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
