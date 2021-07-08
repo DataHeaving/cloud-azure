@@ -7,6 +7,7 @@ export interface KeyVaultSecretInfo {
   kvURL: string;
   secretName: string;
   secretVersion: string;
+  secretValue: string;
   credential: identity.TokenCredential;
 }
 export interface KeyVaultSecretTestContext {
