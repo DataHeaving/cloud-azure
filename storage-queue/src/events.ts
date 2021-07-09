@@ -1,23 +1,30 @@
 import * as queue from "@azure/storage-queue";
 import * as common from "@data-heaving/common";
 
-export type VirtualQueueMessagesProcesingEvents = {
+export interface MessageInfo {
+  messageText: string;
+  messageID: string;
+}
+export interface VirtualQueueMessagesProcesingEvents {
   receivedQueueMessages: common.RetryExecutionResult<queue.QueueReceiveMessageResponse>;
   invalidMessageSeen: {
-    messageText: string;
+    message: MessageInfo;
     parseError: unknown;
   };
-  pipelineExecutionError: {
-    messageText: string;
-    error: unknown;
+  pipelineExecutionComplete: {
+    message: MessageInfo;
+    result: common.RetryExecutionResult<unknown>;
   };
   deletedFromQueue: common.RetryExecutionResult<queue.MessageIdDeleteResponse>;
   sentToPoisonQueue: common.RetryExecutionResult<queue.QueueSendMessageResponse>;
-};
+}
 
 export type EventEmitter = common.EventEmitter<VirtualQueueMessagesProcesingEvents>;
 
-export const createQueuePollingEventEmitterBuilder = (
+export const createEventEmitterBuilder = () =>
+  new common.EventEmitterBuilder<VirtualQueueMessagesProcesingEvents>();
+
+export const createConsoleLoggingEventEmitterBuilder = (
   logMessageText: boolean,
   logMessagePrefix?: string,
   builder?: common.EventEmitterBuilder<VirtualQueueMessagesProcesingEvents>,
@@ -40,19 +47,26 @@ export const createQueuePollingEventEmitterBuilder = (
         `Errors while trying to receive messages: ${errors.join("\n")}.`,
     ),
   );
-  builder.addEventListener("invalidMessageSeen", (arg) =>
+  builder.addEventListener("invalidMessageSeen", ({ message, parseError }) =>
     logger(
       `Error in parsing message${
-        logMessageText ? ` ${arg.messageText}` : ""
-      }:\n${arg.parseError}`,
+        logMessageText ? ` ${message.messageText}` : ""
+      }:\n${parseError}`,
       true,
     ),
   );
-  builder.addEventListener("pipelineExecutionError", (arg) =>
-    logger(
-      `Processing message${
-        logMessageText ? ` ${arg.messageText}` : ""
-      } resulted in error: ${arg.error}`,
+  builder.addEventListener("pipelineExecutionComplete", ({ message, result }) =>
+    logRetryResult(
+      logger,
+      result,
+      () =>
+        `Successfully processed message${
+          logMessageText ? ` ${message.messageText}` : ""
+        }`,
+      (errors) =>
+        `Errors while processing message ${
+          logMessageText ? ` ${message.messageText}` : ""
+        }: ${errors.join("\n")}.`,
       true,
     ),
   );

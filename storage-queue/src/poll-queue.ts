@@ -7,8 +7,12 @@ import * as events from "./events";
 export interface PollMessageOptions<TValidation extends t.Mixed> {
   eventEmitter: events.EventEmitter;
   queueClient: queue.QueueClient;
+  poisonQueueClient: queue.QueueClient;
   messageValidation: TValidation;
-  processMessage: (message: t.TypeOf<TValidation>) => Promise<unknown>;
+  processMessage: (
+    parsedMessage: t.TypeOf<TValidation>,
+    queueMessageID: string,
+  ) => Promise<unknown>;
   receiveMessageVisibilityTimeout: number;
   receiveMessageRetry: number;
   processMessageRetry: number;
@@ -25,10 +29,10 @@ export const OPTION_DEFAULTS: Pick<
   | "poisonQueueAddMessageRetry"
 > = {
   receiveMessageVisibilityTimeout: 60, // 1hour timeout
-  receiveMessageRetry: 5,
-  processMessageRetry: 5,
-  deleteMessageRetry: 5,
-  poisonQueueAddMessageRetry: 5,
+  receiveMessageRetry: 3,
+  processMessageRetry: 3,
+  deleteMessageRetry: 3,
+  poisonQueueAddMessageRetry: 3,
 };
 
 export const getOptionsWithDefaults = <TValidation extends t.Mixed>(
@@ -47,6 +51,7 @@ export const getOptionsWithDefaults = <TValidation extends t.Mixed>(
 export const pollMessagesOnce = async <TValidation extends t.Mixed>({
   eventEmitter,
   queueClient,
+  poisonQueueClient,
   messageValidation,
   processMessage,
   receiveMessageVisibilityTimeout,
@@ -73,9 +78,13 @@ export const pollMessagesOnce = async <TValidation extends t.Mixed>({
 
     for (const msg of receivedMessageItems) {
       let maybeErrors:
-        | common.RetryExecutionResult<void>
+        | common.RetryExecutionResult<unknown>
         | undefined = undefined;
       const { messageText } = msg;
+      const message = {
+        messageText,
+        messageID: msg.messageId,
+      };
       let messageTextParsed:
         | t.TypeOf<typeof messageValidation>
         | undefined = undefined;
@@ -87,7 +96,7 @@ export const pollMessagesOnce = async <TValidation extends t.Mixed>({
         >(
           messageValidation.decode,
           JSON.parse(
-            messageText.substr(0, 1) === "{"
+            messageText.substr(0, 1) === "{" || messageText.substr(0, 1) === '"'
               ? messageText
               : Buffer.from(messageText, "base64").toString(),
           ),
@@ -97,20 +106,15 @@ export const pollMessagesOnce = async <TValidation extends t.Mixed>({
       }
 
       if (messageTextParsed) {
-        const theMessage = messageTextParsed; // We have to do this to satisfy compiler
         maybeErrors = await common.doWithRetry(async () => {
-          try {
-            await processMessage(theMessage);
-          } catch (e) {
-            eventEmitter.emit("pipelineExecutionError", {
-              messageText,
-              error: e,
-            });
-            throw e;
-          }
+          return await processMessage(messageTextParsed, message.messageID);
         }, processMessageRetry);
+        eventEmitter.emit("pipelineExecutionComplete", {
+          message,
+          result: maybeErrors,
+        });
       } else {
-        eventEmitter.emit("invalidMessageSeen", { messageText, parseError });
+        eventEmitter.emit("invalidMessageSeen", { message, parseError });
       }
 
       (maybeErrors?.result === "success"
@@ -134,7 +138,7 @@ export const pollMessagesOnce = async <TValidation extends t.Mixed>({
       eventEmitter.emit(
         "sentToPoisonQueue",
         await common.doWithRetry(
-          async () => queueClient.sendMessage(failedMessage.messageText),
+          async () => poisonQueueClient.sendMessage(failedMessage.messageText),
           poisonQueueAddMessageRetry,
         ),
       );
