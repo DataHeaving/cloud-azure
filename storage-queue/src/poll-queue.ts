@@ -124,24 +124,33 @@ export const pollMessagesOnce = async <TValidation extends t.Mixed>({
     }
 
     for (const msg of receivedMessageItems) {
-      const maybeErrors = await common.doWithRetry(
-        async () => queueClient.deleteMessage(msg.messageId, msg.popReceipt),
-        deleteMessageRetry,
-      );
+      const maybeErrors = {
+        message: {
+          messageID: msg.messageId,
+          messageText: msg.messageText,
+        },
+        result: await common.doWithRetry(
+          () => queueClient.deleteMessage(msg.messageId, msg.popReceipt),
+          deleteMessageRetry,
+        ),
+      };
       eventEmitter.emit("deletedFromQueue", maybeErrors);
-      if (maybeErrors.result === "error") {
+      if (maybeErrors.result.result === "error") {
         failedMessages.push(msg);
       }
     }
 
     for (const failedMessage of failedMessages) {
-      eventEmitter.emit(
-        "sentToPoisonQueue",
-        await common.doWithRetry(
+      eventEmitter.emit("sentToPoisonQueue", {
+        message: {
+          messageID: failedMessage.messageId,
+          messageText: failedMessage.messageText,
+        },
+        result: await common.doWithRetry(
           async () => poisonQueueClient.sendMessage(failedMessage.messageText),
           poisonQueueAddMessageRetry,
         ),
-      );
+      });
     }
   }
 

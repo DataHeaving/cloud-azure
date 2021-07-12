@@ -36,7 +36,7 @@ abi.thisTest.serial(
             eventArg: {
               message: {
                 messageText: JSON.stringify(messageObject),
-                messageID: messageID!,
+                messageID: messageID!, // eslint-disable-line
               },
               result: { result: "success", value: undefined },
             },
@@ -85,9 +85,8 @@ abi.thisTest.serial(
             eventArg: {
               message: {
                 messageText,
-                messageID: (eventTracker.invalidMessageSeen[0]
-                  .eventArg as events.VirtualQueueMessagesProcesingEvents["invalidMessageSeen"])
-                  .message.messageID,
+                messageID:
+                  eventTracker.invalidMessageSeen[0].eventArg.message.messageID,
               },
               parseError: new SyntaxError(
                 "Unexpected token \uFFFD in JSON at position 0",
@@ -114,6 +113,167 @@ abi.thisTest.serial(
   },
 );
 
+abi.thisTest.serial(
+  "Test that deleting message within message handler will put message in poison queue",
+  async (ctx) => {
+    const messageObject = "TestMessage";
+    let popReceipt: string | undefined = undefined;
+    let messageID: string | undefined = undefined;
+    await performSingleMessageTest(
+      ctx,
+      {
+        validation: t.string,
+        messageObject,
+      },
+      async (receivedMessage, receivedMessageID) => {
+        await new queue.QueueClient(
+          ctx.context.queueInfo.receiveQueue.queueURL,
+          ctx.context.queueInfo.credential,
+        ).deleteMessage(receivedMessageID, popReceipt!); // eslint-disable-line
+      },
+      (eventTracker) => {
+        const message = {
+          messageText: JSON.stringify(messageObject),
+          messageID: messageID!, // eslint-disable-line
+        };
+        return {
+          receivedQueueMessages: [
+            {
+              chronologicalIndex: 0,
+              eventArg: eventTracker.receivedQueueMessages[0].eventArg,
+            },
+          ],
+          invalidMessageSeen: [],
+          pipelineExecutionComplete: [
+            {
+              chronologicalIndex: 1,
+              eventArg: {
+                message,
+                result: { result: "success", value: undefined },
+              },
+            },
+          ],
+          deletedFromQueue: [
+            {
+              chronologicalIndex: 2,
+              eventArg: {
+                message,
+                result: {
+                  result: "error",
+                  errors: (eventTracker.deletedFromQueue[0].eventArg as any).result.errors, // eslint-disable-line
+                },
+              },
+            },
+          ],
+          sentToPoisonQueue: [
+            {
+              chronologicalIndex: 3,
+              eventArg: eventTracker.sentToPoisonQueue[0].eventArg,
+            },
+          ],
+        };
+      },
+      {
+        receivedQueueMessages: (arg) => {
+          if (arg.result === "success") {
+            popReceipt = arg.value.receivedMessageItems[0].popReceipt;
+            messageID = arg.value.receivedMessageItems[0].messageId;
+          }
+        },
+      },
+    );
+  },
+);
+
+abi.thisTest.serial(
+  "Test that correct events are sent and nothing gets stuck when no messages pending in queue",
+  async (ctx) => {
+    const { eventEmitter, eventTracker } = createEventEmitterAndRecorder();
+    let processMessageCalled = false;
+    await waitForMessagesAndThenRun(
+      ctx,
+      async (queueClient, poisonQueueClient) => {
+        await spec.pollMessagesOnce(
+          spec.getOptionsWithDefaults({
+            eventEmitter,
+            queueClient,
+            messageValidation: t.undefined,
+            processMessage: () => {
+              processMessageCalled = true;
+              return Promise.resolve();
+            },
+            poisonQueueClient,
+          }),
+        );
+      },
+      0,
+    );
+    ctx.false(processMessageCalled);
+    ctx.deepEqual(
+      eventTracker.receivedQueueMessages[0].eventArg.result,
+      "success",
+    );
+    ctx.deepEqual(eventTracker, {
+      receivedQueueMessages: [
+        {
+          chronologicalIndex: 0,
+          eventArg: eventTracker.receivedQueueMessages[0].eventArg,
+        },
+      ],
+      invalidMessageSeen: [],
+      pipelineExecutionComplete: [],
+      deletedFromQueue: [],
+      sentToPoisonQueue: [],
+    });
+  },
+);
+
+abi.thisTest.serial(
+  "Test that passing wrong URL will result with correct events",
+  async (ctx) => {
+    const { eventEmitter, eventTracker } = createEventEmitterAndRecorder();
+    let processMessageCalled = false;
+    await waitForMessagesAndThenRun(
+      ctx,
+      async (queueClient, poisonQueueClient) => {
+        await spec.pollMessagesOnce(
+          spec.getOptionsWithDefaults({
+            eventEmitter,
+            queueClient: new queue.QueueClient(
+              `${queueClient.url}-not-existing`,
+              ctx.context.queueInfo.credential,
+            ),
+            messageValidation: t.undefined,
+            processMessage: () => {
+              processMessageCalled = true;
+              return Promise.resolve();
+            },
+            poisonQueueClient,
+          }),
+        );
+      },
+      0,
+    );
+    ctx.false(processMessageCalled);
+    ctx.deepEqual(
+      eventTracker.receivedQueueMessages[0].eventArg.result,
+      "error",
+    );
+    ctx.deepEqual(eventTracker, {
+      receivedQueueMessages: [
+        {
+          chronologicalIndex: 0,
+          eventArg: eventTracker.receivedQueueMessages[0].eventArg,
+        },
+      ],
+      invalidMessageSeen: [],
+      pipelineExecutionComplete: [],
+      deletedFromQueue: [],
+      sentToPoisonQueue: [],
+    });
+  },
+);
+
 const performSingleMessageTest = async <T extends t.Mixed>(
   ctx: ExecutionContext<abi.StorageQueueTestContext>,
   message: {
@@ -122,8 +282,11 @@ const performSingleMessageTest = async <T extends t.Mixed>(
   },
   processMessage: spec.PollMessageOptions<T>["processMessage"],
   expectedEventTracker: common.ItemOrFactory<EventTracker, [EventTracker]>,
+  customEventHandlers: CustomEventHandlers = {},
 ) => {
-  const { eventEmitter, eventTracker } = createEventEmitterAndRecorder();
+  const { eventEmitter, eventTracker } = createEventEmitterAndRecorder(
+    customEventHandlers,
+  );
   await Promise.all([
     sendMessages(ctx, [message.messageObject]),
     waitForMessagesAndThenRun(ctx, async (queueClient, poisonQueueClient) => {
@@ -186,15 +349,24 @@ const waitForMessagesAndThenRun = async (
   await processMessages(queueClient, poisonQueueClient);
 };
 
-type EventTracker = Record<
-  keyof events.VirtualQueueMessagesProcesingEvents,
-  Array<{
+type EventTracker = {
+  [E in keyof events.VirtualQueueMessagesProcesingEvents]: Array<{
     chronologicalIndex: number;
-    eventArg: events.VirtualQueueMessagesProcesingEvents[keyof events.VirtualQueueMessagesProcesingEvents];
-  }>
+    eventArg: events.VirtualQueueMessagesProcesingEvents[E];
+  }>;
+};
+
+type CustomEventHandlers = Partial<
+  {
+    [E in keyof events.VirtualQueueMessagesProcesingEvents]: common.EventHandler<
+      events.VirtualQueueMessagesProcesingEvents[E]
+    >;
+  }
 >;
 
-const createEventEmitterAndRecorder = () => {
+const createEventEmitterAndRecorder = (
+  customEventHandlers: CustomEventHandlers = {},
+) => {
   const eventBuilder = events.createEventEmitterBuilder();
   let chronologicalIndex = 0;
   const eventTracker: EventTracker = {
@@ -209,10 +381,19 @@ const createEventEmitterAndRecorder = () => {
     eventBuilder.addEventListener(eventName, (eventArg) => {
       eventTracker[eventName].push({
         chronologicalIndex,
-        eventArg,
+        eventArg: eventArg as any, // eslint-disable-line
       });
       ++chronologicalIndex;
     });
+    const handler = customEventHandlers[eventName];
+    if (handler) {
+      eventBuilder.addEventListener(
+        eventName,
+        handler as common.EventHandler<
+          events.VirtualQueueMessagesProcesingEvents[typeof eventName]
+        >,
+      );
+    }
   }
 
   return {

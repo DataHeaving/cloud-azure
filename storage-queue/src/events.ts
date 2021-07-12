@@ -15,8 +15,14 @@ export interface VirtualQueueMessagesProcesingEvents {
     message: MessageInfo;
     result: common.RetryExecutionResult<unknown>;
   };
-  deletedFromQueue: common.RetryExecutionResult<queue.MessageIdDeleteResponse>;
-  sentToPoisonQueue: common.RetryExecutionResult<queue.QueueSendMessageResponse>;
+  deletedFromQueue: {
+    message: MessageInfo;
+    result: common.RetryExecutionResult<queue.MessageIdDeleteResponse>;
+  };
+  sentToPoisonQueue: {
+    message: MessageInfo;
+    result: common.RetryExecutionResult<queue.QueueSendMessageResponse>;
+  };
 }
 
 export type EventEmitter = common.EventEmitter<VirtualQueueMessagesProcesingEvents>;
@@ -24,9 +30,9 @@ export type EventEmitter = common.EventEmitter<VirtualQueueMessagesProcesingEven
 export const createEventEmitterBuilder = () =>
   new common.EventEmitterBuilder<VirtualQueueMessagesProcesingEvents>();
 
-export const createConsoleLoggingEventEmitterBuilder = (
+export const consoleLoggingEventEmitterBuilder = (
   logMessageText: boolean,
-  logMessagePrefix?: string,
+  logMessagePrefix?: Parameters<typeof common.createConsoleLogger>[0],
   builder?: common.EventEmitterBuilder<VirtualQueueMessagesProcesingEvents>,
   consoleAbstraction?: common.ConsoleAbstraction,
 ) => {
@@ -42,15 +48,19 @@ export const createConsoleLoggingEventEmitterBuilder = (
       logger,
       arg,
       (receivedMessages) =>
-        `Received ${receivedMessages.receivedMessageItems.length} messages from queue.`,
+        `Received ${
+          receivedMessages.receivedMessageItems.length
+        } messages with IDs ${receivedMessages.receivedMessageItems
+          .map(({ messageId }) => messageId)
+          .join(", ")} from queue.`,
       (errors) =>
         `Errors while trying to receive messages: ${errors.join("\n")}.`,
     ),
   );
   builder.addEventListener("invalidMessageSeen", ({ message, parseError }) =>
     logger(
-      `Error in parsing message${
-        logMessageText ? ` ${message.messageText}` : ""
+      `Error in parsing message with ID ${message.messageID}${
+        logMessageText ? ` and text "${message.messageText}"` : ""
       }:\n${parseError}`,
       true,
     ),
@@ -60,38 +70,41 @@ export const createConsoleLoggingEventEmitterBuilder = (
       logger,
       result,
       () =>
-        `Successfully processed message${
-          logMessageText ? ` ${message.messageText}` : ""
+        `Successfully processed message with ID ${message.messageID}${
+          logMessageText ? ` and text "${message.messageText}"` : ""
         }`,
       (errors) =>
-        `Errors while processing message ${
-          logMessageText ? ` ${message.messageText}` : ""
+        `Errors while processing message with ID ${message.messageID}${
+          logMessageText ? ` and text "${message.messageText}"` : ""
         }: ${errors.join("\n")}.`,
-      true,
     ),
   );
   builder.addEventListener("deletedFromQueue", (arg) =>
     logRetryResult(
       logger,
-      arg,
-      (deletedMessage) =>
-        `Deleted message ${deletedMessage.requestId} from queue`,
+      arg.result,
+      () =>
+        `Deleted message ${arg.message.messageID}${
+          logMessageText ? ` with text "${arg.message.messageText}"` : ""
+        } from queue`,
       (errors) =>
-        `Errors while trying to delete messages from queue: ${errors.join(
-          "\n",
-        )}`,
+        `Errors while trying to delete message ${arg.message.messageID}${
+          logMessageText ? ` with text "${arg.message.messageText}"` : ""
+        } from queue: ${errors.join("\n")}`,
     ),
   );
   builder.addEventListener("sentToPoisonQueue", (arg) =>
     logRetryResult(
       logger,
-      arg,
+      arg.result,
       (poisonedMessage) =>
-        `Sent poison queue message ${poisonedMessage.messageId}`,
+        `Poison queue message for received message ${arg.message.messageID}${
+          logMessageText ? ` with text "${arg.message.messageText}"` : ""
+        } sent: ${poisonedMessage.messageId}`,
       (errors) =>
-        `Errors while trying to delete messages from poison queue: ${errors.join(
-          "\n",
-        )}`,
+        `Errors when adding message ${arg.message.messageID}${
+          logMessageText ? ` with text "${arg.message.messageText}"` : ""
+        } to poison queue: ${errors.join("\n")}`,
       true, // All poison queue events are always considered as error
     ),
   );
