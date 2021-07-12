@@ -43,6 +43,10 @@ const performConsoleLoggingTest = (
   };
   const messageID = "SomeID";
   const messageText = "SomeText";
+  const message = {
+    messageID,
+    messageText,
+  };
   const receivedMessageItems: Array<queue.ReceivedMessageItem> = [
     {
       messageId: messageID,
@@ -93,10 +97,7 @@ const performConsoleLoggingTest = (
   });
 
   eventEmitter.emit("invalidMessageSeen", {
-    message: {
-      messageID,
-      messageText,
-    },
+    message,
     parseError: errors[0],
   });
   const invalidMessageSeenMessage = `Error in parsing message with ID ${messageID}${
@@ -107,11 +108,23 @@ const performConsoleLoggingTest = (
     errors: [receivedErrorMessage, invalidMessageSeenMessage],
   });
 
+  const deduplicatedMessagesArg: spec.VirtualQueueMessagesProcesingEvents["deduplicatedMessages"] = {
+    messageKey: "theKey",
+    messages: [message, message],
+  };
+  eventEmitter.emit("deduplicatedMessages", deduplicatedMessagesArg);
+  const deduplicatedMessage = `Deduplicated ${
+    deduplicatedMessagesArg.messages.length
+  } messages into one${
+    logMessageText ? ` with key ${deduplicatedMessagesArg.messageKey}` : ""
+  }`;
+  t.deepEqual(logsAndErrors, {
+    logs: [receivedSuccessMessage, deduplicatedMessage],
+    errors: [receivedErrorMessage, invalidMessageSeenMessage],
+  });
+
   eventEmitter.emit("pipelineExecutionComplete", {
-    message: {
-      messageID,
-      messageText,
-    },
+    message,
     result: {
       result: "success",
       value: undefined,
@@ -121,15 +134,16 @@ const performConsoleLoggingTest = (
     logMessageText ? ` and text "${messageText}"` : ""
   }`;
   t.deepEqual(logsAndErrors, {
-    logs: [receivedSuccessMessage, pipelineCompletedMessage],
+    logs: [
+      receivedSuccessMessage,
+      deduplicatedMessage,
+      pipelineCompletedMessage,
+    ],
     errors: [receivedErrorMessage, invalidMessageSeenMessage],
   });
 
   eventEmitter.emit("pipelineExecutionComplete", {
-    message: {
-      messageID,
-      messageText,
-    },
+    message,
     result: {
       result: "error",
       errors,
@@ -139,7 +153,11 @@ const performConsoleLoggingTest = (
     logMessageText ? ` and text "${messageText}"` : ""
   }: ${errors.join("\n")}.`;
   t.deepEqual(logsAndErrors, {
-    logs: [receivedSuccessMessage, pipelineCompletedMessage],
+    logs: [
+      receivedSuccessMessage,
+      deduplicatedMessage,
+      pipelineCompletedMessage,
+    ],
     errors: [
       receivedErrorMessage,
       invalidMessageSeenMessage,
@@ -148,10 +166,7 @@ const performConsoleLoggingTest = (
   });
 
   eventEmitter.emit("deletedFromQueue", {
-    message: {
-      messageID,
-      messageText,
-    },
+    message,
     result: {
       result: "success",
       value: {
@@ -168,6 +183,7 @@ const performConsoleLoggingTest = (
   t.deepEqual(logsAndErrors, {
     logs: [
       receivedSuccessMessage,
+      deduplicatedMessage,
       pipelineCompletedMessage,
       deletedFromMessage,
     ],
@@ -179,10 +195,7 @@ const performConsoleLoggingTest = (
   });
 
   eventEmitter.emit("deletedFromQueue", {
-    message: {
-      messageID,
-      messageText,
-    },
+    message,
     result: {
       result: "error",
       errors,
@@ -194,6 +207,7 @@ const performConsoleLoggingTest = (
   t.deepEqual(logsAndErrors, {
     logs: [
       receivedSuccessMessage,
+      deduplicatedMessage,
       pipelineCompletedMessage,
       deletedFromMessage,
     ],
@@ -207,10 +221,7 @@ const performConsoleLoggingTest = (
 
   const poisonQueueMessageID = "AnotherID";
   eventEmitter.emit("sentToPoisonQueue", {
-    message: {
-      messageID,
-      messageText,
-    },
+    message,
     result: {
       result: "success",
       value: {
@@ -234,6 +245,7 @@ const performConsoleLoggingTest = (
   t.deepEqual(logsAndErrors, {
     logs: [
       receivedSuccessMessage,
+      deduplicatedMessage,
       pipelineCompletedMessage,
       deletedFromMessage,
     ],
@@ -247,10 +259,7 @@ const performConsoleLoggingTest = (
   });
 
   eventEmitter.emit("sentToPoisonQueue", {
-    message: {
-      messageID,
-      messageText,
-    },
+    message,
     result: {
       result: "error",
       errors,
@@ -262,6 +271,7 @@ const performConsoleLoggingTest = (
   t.deepEqual(logsAndErrors, {
     logs: [
       receivedSuccessMessage,
+      deduplicatedMessage,
       pipelineCompletedMessage,
       deletedFromMessage,
     ],

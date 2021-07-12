@@ -11,6 +11,10 @@ export interface VirtualQueueMessagesProcesingEvents {
     message: MessageInfo;
     parseError: unknown;
   };
+  deduplicatedMessages: {
+    messageKey: string;
+    messages: ReadonlyArray<MessageInfo>;
+  };
   pipelineExecutionComplete: {
     message: MessageInfo;
     result: common.RetryExecutionResult<unknown>;
@@ -63,6 +67,13 @@ export const consoleLoggingEventEmitterBuilder = (
         logMessageText ? ` and text "${message.messageText}"` : ""
       }:\n${parseError}`,
       true,
+    ),
+  );
+  builder.addEventListener("deduplicatedMessages", (arg) =>
+    logger(
+      `Deduplicated ${arg.messages.length} messages into one${
+        logMessageText ? ` with key ${arg.messageKey}` : ""
+      }`,
     ),
   );
   builder.addEventListener("pipelineExecutionComplete", ({ message, result }) =>

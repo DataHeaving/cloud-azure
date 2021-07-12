@@ -18,6 +18,7 @@ export interface PollMessageOptions<TValidation extends t.Mixed> {
   processMessageRetry: number;
   deleteMessageRetry: number;
   poisonQueueAddMessageRetry: number;
+  deduplicateMessagesBy?: (msg: t.TypeOf<TValidation>) => string;
 }
 
 export const OPTION_DEFAULTS: Pick<
@@ -59,11 +60,13 @@ export const pollMessagesOnce = async <TValidation extends t.Mixed>({
   processMessageRetry,
   deleteMessageRetry,
   poisonQueueAddMessageRetry,
+  deduplicateMessagesBy,
 }: PollMessageOptions<TValidation>) => {
   const messagesOrErrors = await common.doWithRetry(
     () =>
       queueClient.receiveMessages({
         visibilityTimeout: receiveMessageVisibilityTimeout, // 2 * 60 * 60, // 2 hours timeout. Max is 7days according to documentation.
+        numberOfMessages: 32,
       }),
     receiveMessageRetry,
   );
@@ -73,62 +76,104 @@ export const pollMessagesOnce = async <TValidation extends t.Mixed>({
       ? messagesOrErrors.value.receivedMessageItems
       : undefined;
   if (receivedMessageItems && receivedMessageItems.length > 0) {
-    const failedMessages: Array<queue.DequeuedMessageItem> = [];
-    const succeededMessages: Array<queue.DequeuedMessageItem> = [];
+    const failedMessages: Array<events.MessageInfo> = [];
+    const succeededMessages: Array<events.MessageInfo> = [];
 
-    for (const msg of receivedMessageItems) {
+    const parsedMessages = receivedMessageItems
+      .map(({ messageId, messageText }) => {
+        const message = {
+          messageID: messageId,
+          messageText,
+        };
+        let messageTextParsed:
+          | t.TypeOf<typeof messageValidation>
+          | undefined = undefined;
+        let parseError: unknown = undefined;
+        let success = false;
+        try {
+          messageTextParsed = validation.decodeOrThrow<
+            t.TypeOf<typeof messageValidation>,
+            unknown
+          >(
+            messageValidation.decode,
+            JSON.parse(
+              messageText.substr(0, 1) === "{" ||
+                messageText.substr(0, 1) === '"'
+                ? messageText
+                : Buffer.from(messageText, "base64").toString(),
+            ),
+          );
+          success = true;
+        } catch (e) {
+          parseError = e;
+        }
+        if (!success) {
+          eventEmitter.emit("invalidMessageSeen", { message, parseError });
+          failedMessages.push(message);
+        }
+
+        return success ? { message, messageTextParsed } : undefined;
+      })
+      .filter(
+        (
+          info,
+        ): info is {
+          message: events.MessageInfo;
+          messageTextParsed: t.TypeOf<typeof messageValidation>;
+        } => !!info,
+      );
+
+    if (deduplicateMessagesBy) {
+      const deduplicatedMessages = parsedMessages.reduce<
+        Record<string, Array<typeof parsedMessages[number]>>
+      >((dict, current) => {
+        common
+          .getOrAddGeneric(
+            dict,
+            deduplicateMessagesBy(current.messageTextParsed),
+            () => [],
+          )
+          .push(current);
+        return dict;
+      }, {});
+      parsedMessages.length = 0;
+      for (const [messageKey, messages] of Object.entries(
+        deduplicatedMessages,
+      )) {
+        eventEmitter.emit("deduplicatedMessages", {
+          messageKey,
+          messages: messages.map(({ message }) => message),
+        });
+        parsedMessages.push(messages[0]);
+      }
+    }
+
+    for (const { message, messageTextParsed } of parsedMessages) {
       let maybeErrors:
         | common.RetryExecutionResult<unknown>
         | undefined = undefined;
-      const { messageText } = msg;
-      const message = {
-        messageText,
-        messageID: msg.messageId,
-      };
-      let messageTextParsed:
-        | t.TypeOf<typeof messageValidation>
-        | undefined = undefined;
-      let parseError: unknown = undefined;
-      try {
-        messageTextParsed = validation.decodeOrThrow<
-          t.TypeOf<typeof messageValidation>,
-          unknown
-        >(
-          messageValidation.decode,
-          JSON.parse(
-            messageText.substr(0, 1) === "{" || messageText.substr(0, 1) === '"'
-              ? messageText
-              : Buffer.from(messageText, "base64").toString(),
-          ),
-        );
-      } catch (e) {
-        parseError = e;
-      }
 
-      if (messageTextParsed) {
-        maybeErrors = await common.doWithRetry(async () => {
-          return await processMessage(messageTextParsed, message.messageID);
-        }, processMessageRetry);
-        eventEmitter.emit("pipelineExecutionComplete", {
-          message,
-          result: maybeErrors,
-        });
-      } else {
-        eventEmitter.emit("invalidMessageSeen", { message, parseError });
-      }
-
-      (maybeErrors?.result === "success"
+      maybeErrors = await common.doWithRetry(
+        () => processMessage(messageTextParsed, message.messageID),
+        processMessageRetry,
+      );
+      eventEmitter.emit("pipelineExecutionComplete", {
+        message,
+        result: maybeErrors,
+      });
+      (maybeErrors.result === "success"
         ? succeededMessages
         : failedMessages
-      ).push(msg);
+      ).push(message);
     }
 
     for (const msg of receivedMessageItems) {
+      const message = {
+        messageID: msg.messageId,
+        messageText: msg.messageText,
+      };
       const maybeErrors = {
-        message: {
-          messageID: msg.messageId,
-          messageText: msg.messageText,
-        },
+        message: message,
         result: await common.doWithRetry(
           () => queueClient.deleteMessage(msg.messageId, msg.popReceipt),
           deleteMessageRetry,
@@ -136,18 +181,18 @@ export const pollMessagesOnce = async <TValidation extends t.Mixed>({
       };
       eventEmitter.emit("deletedFromQueue", maybeErrors);
       if (maybeErrors.result.result === "error") {
-        failedMessages.push(msg);
+        failedMessages.push(message);
       }
     }
 
     for (const failedMessage of failedMessages) {
       eventEmitter.emit("sentToPoisonQueue", {
         message: {
-          messageID: failedMessage.messageId,
+          messageID: failedMessage.messageID,
           messageText: failedMessage.messageText,
         },
         result: await common.doWithRetry(
-          async () => poisonQueueClient.sendMessage(failedMessage.messageText),
+          () => poisonQueueClient.sendMessage(failedMessage.messageText),
           poisonQueueAddMessageRetry,
         ),
       });

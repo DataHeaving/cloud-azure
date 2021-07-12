@@ -11,11 +11,11 @@ abi.thisTest.serial(
   async (ctx) => {
     const messageObject = "TestMessage";
     let messageID: string | undefined = undefined;
-    await performSingleMessageTest(
+    await performMessageTest(
       ctx,
       {
         validation: t.string,
-        messageObject,
+        messageObjects: messageObject,
       },
       (receivedMessage, receivedMessageID) => {
         messageID = receivedMessageID;
@@ -30,6 +30,7 @@ abi.thisTest.serial(
           },
         ],
         invalidMessageSeen: [],
+        deduplicatedMessages: [],
         pipelineExecutionComplete: [
           {
             chronologicalIndex: 1,
@@ -62,11 +63,11 @@ abi.thisTest.serial(
     let messageID: string | undefined = undefined;
     const messageObject = (123 as unknown) as string;
     const messageText = JSON.stringify(messageObject);
-    await performSingleMessageTest(
+    await performMessageTest(
       ctx,
       {
         validation: t.string,
-        messageObject,
+        messageObjects: messageObject,
       },
       (receivedMessage, receivedMessageID) => {
         messageID = receivedMessageID;
@@ -94,6 +95,7 @@ abi.thisTest.serial(
             },
           },
         ],
+        deduplicatedMessages: [],
         pipelineExecutionComplete: [],
         deletedFromQueue: [
           {
@@ -119,11 +121,11 @@ abi.thisTest.serial(
     const messageObject = "TestMessage";
     let popReceipt: string | undefined = undefined;
     let messageID: string | undefined = undefined;
-    await performSingleMessageTest(
+    await performMessageTest(
       ctx,
       {
         validation: t.string,
-        messageObject,
+        messageObjects: messageObject,
       },
       async (receivedMessage, receivedMessageID) => {
         await new queue.QueueClient(
@@ -144,6 +146,7 @@ abi.thisTest.serial(
             },
           ],
           invalidMessageSeen: [],
+          deduplicatedMessages: [],
           pipelineExecutionComplete: [
             {
               chronologicalIndex: 1,
@@ -221,6 +224,7 @@ abi.thisTest.serial(
         },
       ],
       invalidMessageSeen: [],
+      deduplicatedMessages: [],
       pipelineExecutionComplete: [],
       deletedFromQueue: [],
       sentToPoisonQueue: [],
@@ -267,6 +271,7 @@ abi.thisTest.serial(
         },
       ],
       invalidMessageSeen: [],
+      deduplicatedMessages: [],
       pipelineExecutionComplete: [],
       deletedFromQueue: [],
       sentToPoisonQueue: [],
@@ -274,32 +279,174 @@ abi.thisTest.serial(
   },
 );
 
-const performSingleMessageTest = async <T extends t.Mixed>(
+abi.thisTest.serial(
+  "Test that deduplication works as expected",
+  async (ctx) => {
+    const messageObjects = [
+      { key: "key", payload: "Message1" },
+      { key: "key", payload: "Message2" },
+    ];
+    let messageID: string | undefined = undefined;
+    await performMessageTest(
+      ctx,
+      {
+        validation: t.type({ key: t.string, payload: t.string }),
+        messageObjects,
+      },
+      (receivedMessage, receivedMessageID) => {
+        messageID = receivedMessageID;
+        ctx.deepEqual(receivedMessage, messageObjects[0]);
+        return Promise.resolve();
+      },
+      (eventTracker) => ({
+        receivedQueueMessages: [
+          {
+            chronologicalIndex: 0,
+            eventArg: eventTracker.receivedQueueMessages[0].eventArg,
+          },
+        ],
+        invalidMessageSeen: [],
+        deduplicatedMessages: [
+          {
+            chronologicalIndex: 1,
+            eventArg: {
+              messageKey: messageObjects[0].key,
+              messages: messageObjects.map((msg, idx) => ({
+                messageID: (eventTracker.receivedQueueMessages[0].eventArg as {
+                  value: queue.QueueReceiveMessageResponse;
+                }).value.receivedMessageItems[idx].messageId,
+                messageText: JSON.stringify(msg),
+              })),
+            },
+          },
+        ],
+        pipelineExecutionComplete: [
+          {
+            chronologicalIndex: 2,
+            eventArg: {
+              message: {
+                messageText: JSON.stringify(messageObjects[0]),
+              messageID: messageID!, // eslint-disable-line
+              },
+              result: { result: "success", value: undefined },
+            },
+          },
+        ],
+        deletedFromQueue: [
+          {
+            chronologicalIndex: 3,
+            eventArg: eventTracker.deletedFromQueue[0].eventArg,
+          },
+          {
+            chronologicalIndex: 4,
+            eventArg: eventTracker.deletedFromQueue[1].eventArg,
+          },
+        ],
+        sentToPoisonQueue: [],
+      }),
+      {},
+      (item) => item.key,
+    );
+
+    ctx.notDeepEqual(messageID, undefined);
+  },
+);
+
+abi.thisTest.serial(
+  "Test that throwing exception in message processor is catched and retried",
+  async (ctx) => {
+    const errors: Array<Error> = [];
+    const messageObject = "TestMessage";
+    let messageID: string | undefined = undefined;
+    await performMessageTest(
+      ctx,
+      {
+        validation: t.string,
+        messageObjects: messageObject,
+      },
+      (receivedMessage, receivedMessageID) => {
+        messageID = receivedMessageID;
+        errors.push(new Error("This should not leak"));
+        throw errors[errors.length - 1];
+      },
+      (eventTracker) => {
+        const message = {
+          messageText: JSON.stringify(messageObject),
+          messageID: messageID!, // eslint-disable-line
+        };
+        return {
+          receivedQueueMessages: [
+            {
+              chronologicalIndex: 0,
+              eventArg: eventTracker.receivedQueueMessages[0].eventArg,
+            },
+          ],
+          invalidMessageSeen: [],
+          deduplicatedMessages: [],
+          pipelineExecutionComplete: [
+            {
+              chronologicalIndex: 1,
+              eventArg: {
+                message,
+                result: { result: "error", errors },
+              },
+            },
+          ],
+          deletedFromQueue: [
+            {
+              chronologicalIndex: 2,
+              eventArg: eventTracker.deletedFromQueue[0].eventArg,
+            },
+          ],
+          sentToPoisonQueue: [
+            {
+              chronologicalIndex: 3,
+              eventArg: eventTracker.sentToPoisonQueue[0].eventArg,
+            },
+          ],
+        };
+      },
+    );
+    ctx.deepEqual(errors.length, spec.OPTION_DEFAULTS.processMessageRetry + 1);
+  },
+);
+
+const performMessageTest = async <T extends t.Mixed>(
   ctx: ExecutionContext<abi.StorageQueueTestContext>,
   message: {
     validation: T;
-    messageObject: t.TypeOf<T>;
+    messageObjects: OneOrMany<t.TypeOf<T>>;
   },
   processMessage: spec.PollMessageOptions<T>["processMessage"],
   expectedEventTracker: common.ItemOrFactory<EventTracker, [EventTracker]>,
   customEventHandlers: CustomEventHandlers = {},
+  deduplicateMessagesBy?: spec.PollMessageOptions<T>["deduplicateMessagesBy"],
 ) => {
   const { eventEmitter, eventTracker } = createEventEmitterAndRecorder(
     customEventHandlers,
   );
+  const { messageObjects, validation } = message;
+  const messageObjectsArray = Array.isArray(messageObjects)
+    ? messageObjects
+    : [messageObjects];
   await Promise.all([
-    sendMessages(ctx, [message.messageObject]),
-    waitForMessagesAndThenRun(ctx, async (queueClient, poisonQueueClient) => {
-      await spec.pollMessagesOnce(
-        spec.getOptionsWithDefaults({
-          eventEmitter,
-          queueClient,
-          messageValidation: message.validation,
-          processMessage,
-          poisonQueueClient,
-        }),
-      );
-    }),
+    sendMessages(ctx, messageObjectsArray),
+    waitForMessagesAndThenRun(
+      ctx,
+      async (queueClient, poisonQueueClient) => {
+        await spec.pollMessagesOnce(
+          spec.getOptionsWithDefaults({
+            eventEmitter,
+            queueClient,
+            messageValidation: validation,
+            processMessage,
+            poisonQueueClient,
+            deduplicateMessagesBy,
+          }),
+        );
+      },
+      messageObjectsArray.length,
+    ),
   ]);
 
   ctx.deepEqual(
@@ -340,8 +487,11 @@ const waitForMessagesAndThenRun = async (
   const queueClient = new queue.QueueClient(queueURL, credential);
   const poisonQueueClient = new queue.QueueClient(poisonQueueURL, credential);
   while (
-    (await queueClient.peekMessages()).peekedMessageItems.length <
-    expectedMessageCount
+    (
+      await queueClient.peekMessages({
+        numberOfMessages: Math.max(expectedMessageCount, 1),
+      })
+    ).peekedMessageItems.length < expectedMessageCount
   ) {
     await common.sleep(100);
   }
@@ -372,6 +522,7 @@ const createEventEmitterAndRecorder = (
   const eventTracker: EventTracker = {
     receivedQueueMessages: [],
     invalidMessageSeen: [],
+    deduplicatedMessages: [],
     pipelineExecutionComplete: [],
     deletedFromQueue: [],
     sentToPoisonQueue: [],
@@ -401,3 +552,6 @@ const createEventEmitterAndRecorder = (
     eventTracker,
   };
 };
+
+// TODO move this to common
+type OneOrMany<T> = T | Array<T>;
