@@ -26,13 +26,15 @@
   "peerDependencies": {
     "@azure/storage-queue": "^12.5.0",
     "@data-heaving/common": "^0.12.0",
-    "@data-heaving/common-validation": "^0.10.2"
+    "@data-heaving/common-validation": "^0.10.2",
+    "@data-heaving/scheduler": "^0.13.0"
   },
   "devDependencies": {
     "@azure/storage-queue": "^12.5.0",
     "@data-heaving/common": "^0.12.0",
     "@data-heaving/common-validation": "^0.10.2",
     "@data-heaving/common-test-support": "0.10.2",
+    "@data-heaving/scheduler": "^0.13.0",
     "@types/node": "14.14.31",
     "@typescript-eslint/eslint-plugin": "4.22.0",
     "@typescript-eslint/parser": "4.22.0",

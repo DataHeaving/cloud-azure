@@ -31,6 +31,8 @@ export interface VirtualQueueMessagesProcesingEvents {
 
 export type EventEmitter = common.EventEmitter<VirtualQueueMessagesProcesingEvents>;
 
+export type EventEmitterBuilder = common.EventEmitterBuilder<VirtualQueueMessagesProcesingEvents>;
+
 export const createEventEmitterBuilder = () =>
   new common.EventEmitterBuilder<VirtualQueueMessagesProcesingEvents>();
 
