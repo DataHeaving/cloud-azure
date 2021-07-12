@@ -21,7 +21,7 @@ abi.thisTest.before("Start Azurite Container", async (t) => {
     image: "mcr.microsoft.com/azure-storage/azurite:3.13.1",
     containerPorts: [
       {
-        containerPort: 10001, // Queue endpoint is running in port 10001, unlike storage endpoint running at 10000
+        containerPort: defaultQueuePort, // Queue endpoint is running in port 10001, unlike storage endpoint running at 10000
         exposedPort: port,
         checkReadyness: async (host, port) => {
           await new queue.QueueClient(
