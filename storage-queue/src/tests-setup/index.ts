@@ -32,7 +32,7 @@ abi.thisTest.before("Start Azurite Container", async (t) => {
       },
     ],
     containerEnvironment: {},
-    networkName: env.AZURE_STORAGE_QUEUE_DOCKER_NW,
+    networkName: env.ASQ_DOCKER_NW,
   });
   t.context.containerID = containerID;
   const saURL = `http://${containerHostName}:${port}/${storageAccountName}`;

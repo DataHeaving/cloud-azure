@@ -45,7 +45,28 @@ jobs:
           cd ${{ matrix.dir }}
           npm ci
           npm run build
-          npm run test
+
+          echo 'FROM node:14-alpine3.13
+            RUN apk update \
+              && apk add --no-cache docker-cli \
+              && npm install -g npm' | docker build -t this_node -
+          docker network create this_nw
+          function npm_docker()
+          {
+            docker run \
+              --rm \
+              -v "$(pwd)/:/code/:rw" \
+              -v '/var/run/docker.sock:/var/run/docker.sock' \
+              -v '/usr/bin/docker:/usr/bin/docker:ro' \
+              --entrypoint npm \
+              -w /code \
+              --env MVM_CONTAINER_NW='this_nw' \
+              --env AZURE_STORAGE_QUEUE_DOCKER_NW='this_nw' \
+              --network this_nw \
+              this_node \
+              "$@"
+          }
+          npm_docker run test
       - uses: codecov/codecov-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
