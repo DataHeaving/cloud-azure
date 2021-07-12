@@ -48,7 +48,9 @@ jobs:
           docker pull mcr.microsoft.com/azure-storage/azurite:3.13.1
           docker pull node:14-alpine3.13
           docker ps -a
-          npm run test
+          sudo netstat -tunlp
+          npm run test || sudo netstat -tunlp
+          sudo netstat -tunlp
       - uses: codecov/codecov-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
