@@ -45,6 +45,8 @@ jobs:
           cd ${{ matrix.dir }}
           npm ci
           npm run build
+          docker pull mcr.microsoft.com/azure-storage/azurite:3.13.1
+          docker pull node:14-alpine3.13
           docker ps -a
           npm run test
       - uses: codecov/codecov-action@v1
