@@ -12,9 +12,11 @@ on:
     - 'identity/**'
     - 'storage-blob/**'
     - 'kv-secret/**'
+    - 'storage-queue/**'
     - '!identity/README.md'
     - '!storage-blob/README.md'
     - '!kv-secret/README.md'
+    - '!storage-queue/README.md'
     - '.codecov.yml'
   push: # Run this pipeline also after merging to develop, to report code coverage to codecov for this branch
     branches:
