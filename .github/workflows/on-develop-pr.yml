@@ -49,9 +49,9 @@ jobs:
           # We must invoke tests via Docker, otherwise we will get an error claiming that port for another Docker container running in parallel is already allocated.
           # Not sure if this is GH or Docker bug, but nevertheless it is fixed by putting Node itself into Docker container when running tests.
           whereis docker
-          cat /usr/bin/docker || echo 'FAIL1'
-          cat /etc/docker || echo 'FAIL2'
-          cat /usr/libexec/docker || echo 'FAIL3'
+          # cat /usr/bin/docker || echo 'FAIL1'
+          # cat /etc/docker || echo 'FAIL2'
+          # cat /usr/libexec/docker || echo 'FAIL3'
           echo 'FROM node:14-alpine3.13
             RUN apk update \
               && apk add --no-cache docker-cli \
@@ -63,7 +63,6 @@ jobs:
               --rm \
               -v "$(pwd)/:/code/:rw" \
               -v '/var/run/docker.sock:/var/run/docker.sock' \
-              -v '/usr/bin/docker:/usr/bin/docker:ro' \
               --entrypoint npm \
               -w /code \
               --env MVM_CONTAINER_NW='this_nw' \
