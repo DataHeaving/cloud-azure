@@ -12,7 +12,7 @@ abi.thisTest.before("Start Azurite Container", async (t) => {
   ); // See https://github.com/Azure/Azurite for default credentials
   const queueName = "test-queue";
   const defaultQueuePort = 10001; // Queue endpoint is running in port 10001, unlike storage endpoint running at 10000
-  const port = env.AZURE_STORAGE_QUEUE_DOCKER_NW ? defaultQueuePort : 20001; // When running in GitHub pipeline, for some reason port 10001 is already taken
+  const port = env.AZURE_STORAGE_QUEUE_DOCKER_NW ? defaultQueuePort : 30201; // When running in GitHub pipeline, for some reason port 10001 is already taken
   const {
     containerID,
     containerHostName,
