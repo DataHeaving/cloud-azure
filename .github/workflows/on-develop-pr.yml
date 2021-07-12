@@ -45,12 +45,7 @@ jobs:
           cd ${{ matrix.dir }}
           npm ci
           npm run build
-          docker pull mcr.microsoft.com/azure-storage/azurite:3.13.1
-          docker pull node:14-alpine3.13
-          docker ps -a
-          sudo netstat -tunlp
-          npm run test || sudo netstat -tunlp
-          sudo netstat -tunlp
+          npm run test
       - uses: codecov/codecov-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
