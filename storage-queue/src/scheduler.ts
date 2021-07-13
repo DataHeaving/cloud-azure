@@ -15,7 +15,10 @@ export type JobCreationOptions<TValidation extends t.Mixed> = Pick<
   Pick<Partial<JobInfo>, "timeFromNowToNextInvocation"> & {
     pollQueueEvents: events.EventEmitterBuilder;
     queueInfo: {
-      credential: auth.TokenCredential;
+      credential:
+        | queue.StorageSharedKeyCredential
+        | queue.AnonymousCredential
+        | auth.TokenCredential;
       queueURL: string | URL;
       poisonQueueURL?: string | URL;
     };
@@ -38,26 +41,24 @@ export const createJobInfo = <TValidation extends t.Mixed>({
     | scheduler.SchedulerEventBuilder
     | undefined = undefined;
   if (telemetryInfo) {
+    // TODO move this telemetry part to @data-heaving/scheduler project
     const { client: telemetryClient, jobID, logMessageText } = telemetryInfo;
     // Notice! This one is *specific to this job*, and will not have auto-registered console-emitting event handlers. We use it only for telemetry.
     jobSpecificEvents = scheduler.createEventEmitterBuilder();
-    let startDate: Date | undefined = undefined;
-    jobSpecificEvents.addEventListener("jobStarting", () => {
-      startDate = new Date();
-    });
-    jobSpecificEvents.addEventListener("jobEnded", ({ error }) => {
-      if (startDate) {
+    jobSpecificEvents.addEventListener(
+      "jobEnded",
+      ({ durationInMs, ...arg }) => {
         telemetryClient.trackMetric({
           name: `${jobID}_Duration`,
-          value: new Date().valueOf() - startDate.valueOf(),
+          value: durationInMs,
         });
-      }
-      if (error) {
-        telemetryClient.trackException({
-          exception: error,
-        });
-      }
-    });
+        if ("error" in arg) {
+          telemetryClient.trackException({
+            exception: arg.error!,
+          });
+        }
+      },
+    );
     telemetry.setupTelemetry(
       logMessageText,
       pollQueueEvents,

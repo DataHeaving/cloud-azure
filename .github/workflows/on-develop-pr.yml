@@ -23,7 +23,23 @@ on:
     - develop
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - id: build_docker
+        name: Build Docker image
+        shell: bash
+        run: |
+          set -e
+
+          echo 'FROM node:14-alpine3.13
+            RUN apk update \
+              && apk add --no-cache docker-cli \
+              && npm install -g npm' | docker build -t this_node -
+          docker network create this_nw
+
   build_and_test:
+    needs: prepare
     strategy:
       matrix:
         dir: [ identity, storage-blob, kv-secret, storage-queue ]
@@ -42,20 +58,13 @@ jobs:
         run: |
           set -e
 
-          whereis npm
-
           cd ${{ matrix.dir }}
           npm ci
           npm run build
 
           # We must invoke tests via Docker, otherwise we will get an error claiming that port for another Docker container running in parallel is already allocated.
           # Not sure if this is GH or Docker bug, but nevertheless it is fixed by putting Node itself into Docker container when running tests.
-          echo 'FROM node:14-alpine3.13
-            RUN apk update \
-              && apk add --no-cache docker-cli \
-              && npm install -g npm' | docker build -t this_node -
-          docker network create this_nw || echo 'Most likely Docker network was created by another matrix runner'
-          function npm_docker()
+          function npm()
           {
             docker run \
               --rm \
@@ -69,7 +78,7 @@ jobs:
               this_node \
               "$@"
           }
-          npm_docker run test
+          npm run test
       - uses: codecov/codecov-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

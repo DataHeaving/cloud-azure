@@ -430,7 +430,7 @@ const performMessageTest = async <T extends t.Mixed>(
     ? messageObjects
     : [messageObjects];
   await Promise.all([
-    sendMessages(ctx, messageObjectsArray),
+    abi.sendMessages(ctx, messageObjectsArray),
     waitForMessagesAndThenRun(
       ctx,
       async (queueClient, poisonQueueClient) => {
@@ -455,20 +455,6 @@ const performMessageTest = async <T extends t.Mixed>(
       ? expectedEventTracker(eventTracker)
       : expectedEventTracker,
   );
-};
-
-const sendMessages = async <T>(
-  ctx: ExecutionContext<abi.StorageQueueTestContext>,
-  messages: ReadonlyArray<T>,
-) => {
-  const {
-    receiveQueue: { queueURL },
-    credential,
-  } = ctx.context.queueInfo;
-  const queueClient = new queue.QueueClient(queueURL, credential);
-  for (const message of messages) {
-    await queueClient.sendMessage(JSON.stringify(message));
-  }
 };
 
 const waitForMessagesAndThenRun = async (
