@@ -11,20 +11,20 @@ export type JobInfo = scheduler.JobInfo<number | undefined>;
 export type JobCreationOptions<TValidation extends t.Mixed> = Pick<
   poll.PollMessageOptions<TValidation>,
   "messageValidation" | "processMessage" | "deduplicateMessagesBy"
-> & {
-  timeFromNowToNextInvocation: JobInfo["timeFromNowToNextInvocation"];
-  pollQueueEvents: events.EventEmitterBuilder;
-  queueInfo: {
-    credential: auth.TokenCredential;
-    queueURL: string | URL;
-    poisonQueueURL?: string | URL;
+> &
+  Pick<Partial<JobInfo>, "timeFromNowToNextInvocation"> & {
+    pollQueueEvents: events.EventEmitterBuilder;
+    queueInfo: {
+      credential: auth.TokenCredential;
+      queueURL: string | URL;
+      poisonQueueURL?: string | URL;
+    };
+    telemetryInfo?: {
+      logMessageText: boolean;
+      client: telemetry.TelemetryClient;
+      jobID: string;
+    };
   };
-  telemetryInfo?: {
-    logMessageText: boolean;
-    client: telemetry.TelemetryClient;
-    jobID: string;
-  };
-};
 export const createJobInfo = <TValidation extends t.Mixed>({
   timeFromNowToNextInvocation,
   messageValidation,
@@ -85,7 +85,7 @@ export const createJobInfo = <TValidation extends t.Mixed>({
     timeFromNowToNextInvocation:
       timeFromNowToNextInvocation ??
       ((prevResult) =>
-        typeof prevResult === "number" && prevResult > 0 ? 0 : 15 * 1000),
+        typeof prevResult === "number" && prevResult > 0 ? 0 : 15 * 1000), // If previous result (amount of queue messages processed) was > 0, rerun immediately (greedy queue-emptying algorithm). Otherwise, wait 15secs.
     job: () => poll.pollMessagesOnce(pollOptions),
     jobSpecificEvents,
   };

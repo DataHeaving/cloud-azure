@@ -42,6 +42,8 @@ jobs:
         run: |
           set -e
 
+          whereis npm
+
           cd ${{ matrix.dir }}
           npm ci
           npm run build

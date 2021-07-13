@@ -2,6 +2,7 @@ import * as common from "@data-heaving/common";
 import * as events from "./events";
 import * as scheduler from "@data-heaving/scheduler";
 
+// TODO Move this to @data-heaving/scheduler
 export interface TelemetryClient {
   trackException: (info: { exception: Error }) => unknown;
   trackMetric: (info: { name: string; value: number }) => unknown;
@@ -9,12 +10,13 @@ export interface TelemetryClient {
 
 export const setupTelemetry = (
   logMessageTexts: boolean,
-  pipelineEvents: common.EventEmitterBuilder<events.VirtualQueueMessagesProcesingEvents>,
+  queueEvents: common.EventEmitterBuilder<events.VirtualQueueMessagesProcesingEvents>,
   schedulerEvents: scheduler.SchedulerEventBuilder,
   telemetry: TelemetryClient,
   jobID: string,
 ) => {
   const createNewSingleRunState = () => ({
+    receivedMessages: 0,
     processedMessages: 0,
     poisonedMessages: 0,
   });
@@ -23,35 +25,38 @@ export const setupTelemetry = (
     currentRunState = createNewSingleRunState();
   });
 
-  pipelineEvents.addEventListener("receivedQueueMessages", (arg) =>
-    reportRetryResultMetrics(jobID, telemetry, arg, (receivedMessages) => ({
-      name: "ReceivedMessages",
-      value: receivedMessages.receivedMessageItems.length,
-    })),
+  queueEvents.addEventListener("receivedQueueMessages", (arg) =>
+    reportRetryResultMetrics(jobID, telemetry, arg, (receivedMessages) => {
+      currentRunState.receivedMessages +=
+        receivedMessages.receivedMessageItems.length;
+      return undefined;
+    }),
   );
 
-  pipelineEvents.addEventListener("invalidMessageSeen", (arg) => {
+  queueEvents.addEventListener("invalidMessageSeen", (arg) => {
     telemetry.trackException({
       exception: new Error(
         `Invalid message with ID ${arg.message.messageID}${
-          logMessageTexts ? ` and text "${arg.message.messageText}"` : ""
+          logMessageTexts
+            ? ` and text "${arg.message.messageText}", resulting in error ${arg.parseError}` // Only log error if logMessageTexts is true as we might have sensitive data in parse error message
+            : ""
         }`,
       ),
     });
   });
 
-  pipelineEvents.addEventListener("pipelineExecutionComplete", (arg) =>
+  queueEvents.addEventListener("pipelineExecutionComplete", (arg) =>
     reportRetryResultMetrics(jobID, telemetry, arg.result, undefined),
   );
 
-  pipelineEvents.addEventListener("deletedFromQueue", (arg) =>
+  queueEvents.addEventListener("deletedFromQueue", (arg) =>
     reportRetryResultMetrics(jobID, telemetry, arg.result, () => {
       ++currentRunState.processedMessages;
       return undefined;
     }),
   );
 
-  pipelineEvents.addEventListener("sentToPoisonQueue", (arg) =>
+  queueEvents.addEventListener("sentToPoisonQueue", (arg) =>
     reportRetryResultMetrics(jobID, telemetry, arg.result, () => {
       ++currentRunState.poisonedMessages;
       return undefined;
@@ -62,7 +67,15 @@ export const setupTelemetry = (
     // Until MS bothers to implement namespace support also to Node library ( it's already existing in .NET), we have to use this ugly way of doing things.
     // More info: https://github.com/microsoft/ApplicationInsights-node.js/issues/609
     const ns = jobID; //telemetry.context.tags[telemetry.context.keys.cloudRole];
-    const { processedMessages, poisonedMessages } = currentRunState;
+    const {
+      receivedMessages,
+      processedMessages,
+      poisonedMessages,
+    } = currentRunState;
+    telemetry.trackMetric({
+      name: `${ns}_ReceivedMessages`,
+      value: receivedMessages,
+    });
     telemetry.trackMetric({
       name: `${ns}_ProcessedMessages`,
       value: processedMessages,
@@ -99,12 +112,13 @@ const reportRetryResultMetrics = <T>(
       });
     }
   } else {
-    const metricInfo = getMetric?.(result.value);
-    if (metricInfo) {
-      telemetry.trackMetric({
-        name: `${jobID}_${metricInfo.name}`,
-        value: metricInfo.value,
-      });
-    }
+    // TODO uncomment this once moved to @data-heaving/scheduler
+    /*const metricInfo = */ getMetric?.(result.value);
+    // if (metricInfo) {
+    //   telemetry.trackMetric({
+    //     name: `${jobID}_${metricInfo.name}`,
+    //     value: metricInfo.value,
+    //   });
+    // }
   }
 };
