@@ -1,6 +1,6 @@
 {
   "name": "@data-heaving/azure-storage-blob",
-  "version": "0.10.0",
+  "version": "1.0.0",
   "author": {
     "name": "Stanislav Muhametsin",
     "email": "346799+stazz@users.noreply.github.com",
@@ -25,11 +25,11 @@
   },
   "peerDependencies": {
     "@azure/storage-blob": "^12.5.0",
-    "@data-heaving/common": "^0.10.1"
+    "@data-heaving/common": "^1.0.0"
   },
   "devDependencies": {
     "@azure/storage-blob": "^12.5.0",
-    "@data-heaving/common": "^0.10.1",
+    "@data-heaving/common": "^1.0.0",
     "@types/node": "14.14.31",
     "@typescript-eslint/eslint-plugin": "4.22.0",
     "@typescript-eslint/parser": "4.22.0",
