@@ -135,7 +135,7 @@ const performTest = async (
         messagesProcessed = await job();
       }));
   const jobEnded: scheduler.VirtualSchedulerEvents["jobEnded"] = {
-    name: opts.telemetryInfo?.jobID ?? "",
+    jobID: opts.telemetryInfo?.jobID ?? "",
     durationInMs: 1000,
   };
   if (shouldThrow) {
