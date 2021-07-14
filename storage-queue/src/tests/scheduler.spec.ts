@@ -10,10 +10,17 @@ import { URL } from "url";
 abi.thisTest.serial(
   "Test that omitting telemetry info will result in proper job info",
   async (ctx) => {
+    await abi.sendMessages(ctx, ["TestMessage"]);
     await performTest(ctx, {});
     await performTest(ctx, {}, false, {
       overrideReceiveQueueURL: `${ctx.context.queueInfo.receiveQueue.queueURL}/`,
       overridePoisonQueueURL: undefined,
+    });
+    await performTest(ctx, {}, false, {
+      overrideReceiveQueueURL: undefined,
+      overridePoisonQueueURL: new URL(
+        ctx.context.queueInfo.poisonQueue.queueURL,
+      ),
     });
   },
 );
@@ -137,10 +144,9 @@ const performTest = async (
   schedulerEvents?.emit("jobEnded", jobEnded);
 
   if (!shouldThrow) {
-    ctx.deepEqual(
-      messagesProcessed!,
-      0,
-      "Job must have returned a number which is zero (no messages processed).",
+    ctx.true(
+      messagesProcessed! >= 0,
+      "Job must have returned a number which is at least zero.",
     );
   }
 
@@ -151,6 +157,12 @@ const performTest = async (
       "Time to next invocation must be expected one when supplying custom callback.",
     );
   } else if (!shouldThrow) {
+    const firstTime = timeFromNowToNextInvocation(undefined);
+    ctx.true(
+      firstTime !== undefined && firstTime === 0,
+      "First wait time must be zero",
+    );
+
     const timeforNext = timeFromNowToNextInvocation(messagesProcessed);
     ctx.notDeepEqual(
       timeforNext,

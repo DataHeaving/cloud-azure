@@ -27,6 +27,12 @@ export type JobCreationOptions<TValidation extends t.Mixed> = Pick<
       client: telemetry.TelemetryClient;
       jobID: string;
     };
+    // All intervals in seconds
+    pollInterval?: {
+      afterSomeMessages: number;
+      afterNoMessages: number;
+      initial: number;
+    };
   };
 export const createJobInfo = <TValidation extends t.Mixed>({
   timeFromNowToNextInvocation,
@@ -36,6 +42,7 @@ export const createJobInfo = <TValidation extends t.Mixed>({
   pollQueueEvents,
   queueInfo: { credential, queueURL, poisonQueueURL },
   telemetryInfo,
+  pollInterval,
 }: JobCreationOptions<TValidation>): JobInfo => {
   let jobSpecificEvents:
     | scheduler.SchedulerEventBuilder
@@ -43,7 +50,7 @@ export const createJobInfo = <TValidation extends t.Mixed>({
   if (telemetryInfo) {
     // TODO move this telemetry part to @data-heaving/scheduler project
     const { client: telemetryClient, jobID, logMessageText } = telemetryInfo;
-    // Notice! This one is *specific to this job*, and will not have auto-registered console-emitting event handlers. We use it only for telemetry.
+    // Notice! This event emitter builder is *specific to this job*, and will not have auto-registered console-emitting event handlers. We use it only for telemetry.
     jobSpecificEvents = scheduler.createEventEmitterBuilder();
     jobSpecificEvents.addEventListener(
       "jobEnded",
@@ -86,7 +93,11 @@ export const createJobInfo = <TValidation extends t.Mixed>({
     timeFromNowToNextInvocation:
       timeFromNowToNextInvocation ??
       ((prevResult) =>
-        typeof prevResult === "number" && prevResult > 0 ? 0 : 15 * 1000), // If previous result (amount of queue messages processed) was > 0, rerun immediately (greedy queue-emptying algorithm). Otherwise, wait 15secs.
+        typeof prevResult === "number"
+          ? prevResult > 0
+            ? (pollInterval?.afterSomeMessages ?? 0) * 1000
+            : (pollInterval?.afterNoMessages ?? 15) * 1000 // If previous result (amount of queue messages processed) was > 0, rerun immediately (greedy queue-emptying algorithm). Otherwise, wait 15secs.
+          : (pollInterval?.initial ?? 0) * 1000),
     job: () => poll.pollMessagesOnce(pollOptions),
     jobSpecificEvents,
   };
