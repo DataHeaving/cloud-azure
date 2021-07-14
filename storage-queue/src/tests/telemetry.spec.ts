@@ -262,7 +262,7 @@ const runTest = (
   );
   const schedulerEvents = schedulerEventsBuilder.createEventEmitter();
 
-  schedulerEvents.emit("jobStarting", { name: jobID }); // This will trigger internal telemetry mechanisms to start collecting data
+  schedulerEvents.emit("jobStarting", { jobID }); // This will trigger internal telemetry mechanisms to start collecting data
   let seenError: Error | undefined = undefined;
   try {
     simulateEvents(queueEvents.createEventEmitter());
@@ -270,7 +270,7 @@ const runTest = (
     seenError = e as Error;
   } finally {
     const endArg: scheduler.VirtualSchedulerEvents["jobEnded"] = {
-      name: jobID,
+      jobID,
       durationInMs: 1, // Will not be used by telemetry
     };
     if (seenError) {
