@@ -47,12 +47,14 @@ jobs:
               && apk add --no-cache docker-cli \
               && npm install -g npm' | docker build -t this_node -
           docker network create this_nw
+          cd ..
           docker run \
             --rm \
             --entrypoint sh \
             -v "$(pwd)/:/code/:rw" \
             -v '/var/run/docker.sock:/var/run/docker.sock' \
-            --workdir '/code' \
+            -v "$(pwd)/_npm/${{ matrix.dir }}/:/root/.npm/:rw" \
+            --workdir '/code/${{ matrix.dir }}' \
             --env MVM_CONTAINER_NW='this_nw' \
             --env ASQ_DOCKER_NW='this_nw' \
             --network this_nw \
