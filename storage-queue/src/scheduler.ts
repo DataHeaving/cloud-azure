@@ -26,6 +26,7 @@ export type JobCreationOptions<TValidation extends t.Mixed> = Pick<
       logMessageText: boolean;
       client: telemetry.TelemetryClient;
       jobID: string;
+      schedulerEvents?: scheduler.SchedulerEventBuilder;
     };
     // All intervals in seconds
     pollInterval?: {
@@ -51,7 +52,8 @@ export const createJobInfo = <TValidation extends t.Mixed>({
     // TODO move this telemetry part to @data-heaving/scheduler project
     const { client: telemetryClient, jobID, logMessageText } = telemetryInfo;
     // Notice! This event emitter builder is *specific to this job*, and will not have auto-registered console-emitting event handlers. We use it only for telemetry.
-    jobSpecificEvents = scheduler.createEventEmitterBuilder();
+    jobSpecificEvents =
+      telemetryInfo.schedulerEvents ?? scheduler.createEventEmitterBuilder();
     jobSpecificEvents.addEventListener(
       "jobEnded",
       ({ durationInMs, ...arg }) => {
