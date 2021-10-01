@@ -1,3 +1,5 @@
+import "cross-fetch";
+import "cross-fetch/polyfill";
 import * as graph from "@microsoft/microsoft-graph-client";
 import * as validation from "@data-heaving/common-validation";
 import * as common from "@data-heaving/common";
