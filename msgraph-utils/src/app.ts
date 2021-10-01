@@ -10,7 +10,7 @@ import * as types from "./types";
 import * as utils from "./utils";
 
 export const appGraphApi = "/applications";
-export const ensureApplicationExists = async (
+export const getOrCreateApplicationWithDisplayName = async (
   client: graph.Client,
   applicationName: string,
 ) => {
@@ -65,7 +65,7 @@ export const tryGetApplicationByID = async (
   }
 };
 
-export const ensureCertificateAuthenticationExists = async (
+export const getOrCreateCertificateAuthentication = async (
   client: graph.Client,
   application: types.Application,
   certificatePem: string,

@@ -8,7 +8,7 @@ import * as utils from "./utils";
 import * as applications from "./app";
 
 export const spGraphApi = "/servicePrincipals";
-export const ensureServicePrincipalExists = async (
+export const getOrCreateServicePrincipalForApplication = async (
   client: graph.Client,
   applicationOrId: string | types.Application,
 ) => {
@@ -61,7 +61,7 @@ export const tryGetServicePrincipalByID = async (
   }
 };
 
-export const ensureSPRoleAssignments = async (
+export const ensureServicePrincipalRoleAssignments = async (
   client: graph.Client,
   target:
     | string
@@ -75,11 +75,11 @@ export const ensureSPRoleAssignments = async (
       : target.app) ??
     utils.doThrow<types.Application>("Could not find application.");
   const sp =
-    (typeof target !== "string"
-      ? typeof target.sp === "string"
-        ? await tryGetServicePrincipalByID(client, target.sp)
-        : target.sp
-      : await tryGetServicePrincipalByAppId(client, app.appId)) ??
+    (typeof target === "string"
+      ? await tryGetServicePrincipalByAppId(client, app.appId)
+      : typeof target.sp === "string"
+      ? await tryGetServicePrincipalByID(client, target.sp)
+      : target.sp) ??
     utils.doThrow<types.ServicePrincipal>("Could not find service principal.");
 
   // We need to find out which permission we need to grant admin consent for
