@@ -116,9 +116,19 @@ export const getOrCreateCertificateAuthentication = async (
 
 export const ensureAppRequiredResourceAccess = async (
   client: graph.Client,
-  application: types.Application,
+  applicationOrDisplayName: types.Application | string,
   appRequiredPermissions: Array<types.ApplicationRequiredResourceAccess>,
 ) => {
+  const application =
+    typeof applicationOrDisplayName === "string"
+      ? (await tryGetApplicationByDisplayName(
+          client,
+          applicationOrDisplayName,
+        )) ??
+        utils.doThrow<types.Application>(
+          `Failed to find application with name "${applicationOrDisplayName}".`,
+        )
+      : applicationOrDisplayName;
   const { id } = application;
   const patchableAccess = createPatchableRequiredAccessArray(
     application.requiredResourceAccess,
@@ -132,7 +142,10 @@ export const ensureAppRequiredResourceAccess = async (
     });
   }
 
-  return patchableAccess;
+  return {
+    application,
+    patchableAccess,
+  };
 };
 
 interface AppPermissionAddInfo {
