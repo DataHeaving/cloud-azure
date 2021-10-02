@@ -13,10 +13,12 @@ on:
     - 'storage-blob/**'
     - 'kv-secret/**'
     - 'storage-queue/**'
+    - 'msgraph-utils/**'
     - '!identity/README.md'
     - '!storage-blob/README.md'
     - '!kv-secret/README.md'
     - '!storage-queue/README.md'
+    - '!msgraph-utils/README.md'
     - '.codecov.yml'
   push: # Run this pipeline also after merging to develop, to report code coverage to codecov for this branch
     branches:
@@ -26,7 +28,7 @@ jobs:
   build_and_test:
     strategy:
       matrix:
-        dir: [ identity, storage-blob, kv-secret, storage-queue ]
+        dir: [ identity, storage-blob, kv-secret, storage-queue, msgraph-utils ]
     runs-on: ubuntu-latest
     name: Build and test ${{ matrix.dir }}
     steps:
