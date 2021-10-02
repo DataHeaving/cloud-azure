@@ -66,6 +66,7 @@ export const ensureServicePrincipalRoleAssignments = async (
   target:
     | string
     | { app: string | types.Application; sp: string | types.ServicePrincipal },
+  requiredResourceAccess?: types.Application["requiredResourceAccess"],
 ) => {
   const app =
     (typeof target === "string"
@@ -110,7 +111,9 @@ export const ensureServicePrincipalRoleAssignments = async (
     return curMap;
   }, {});
 
-  const adminConsentNeededOn = app.requiredResourceAccess
+  const adminConsentNeededOn = (
+    requiredResourceAccess ?? app.requiredResourceAccess
+  )
     .flatMap(({ resourceAppId, resourceAccess }) => {
       const resourceSP = consentedResourceSPs[resourceAppId];
       const missingResources = resourceSP
